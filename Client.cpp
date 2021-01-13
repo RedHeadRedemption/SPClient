@@ -4,21 +4,17 @@
 #include <sstream>
 
 
-void Client::StaticReceive(LPVOID thisClient)
-{
-	Client * clientReceive = (Client*)thisClient;
-	clientReceive->Receive();
-}
+
 
 void Client::StaticUserRequests(LPVOID thisClient)
 {
-	Client * userRequest = (Client*)thisClient;
+	Client* userRequest = (Client*)thisClient;
 	userRequest->UserRequests();
 }
 
 
 // main constructor
-Client::Client(SOCKET clientSocket) 
+Client::Client(SOCKET clientSocket)
 {
 	_isActive = 1;
 	_activeSocket = clientSocket;
@@ -28,7 +24,7 @@ Client::Client(SOCKET clientSocket)
 	_totalCount = 0;
 
 	threadMutex = CreateMutex(NULL, FALSE, NULL);
-	if (threadMutex== NULL)
+	if (threadMutex == NULL)
 	{
 		printf("CreateMutex error: %d\n", GetLastError());
 		_isActive = 0;
@@ -36,7 +32,7 @@ Client::Client(SOCKET clientSocket)
 	}
 
 	//CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)StaticDataTransfer, this, NULL, NULL);
-	CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)StaticReceive, this, NULL, NULL);
+	//CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)StaticReceive, this, NULL, NULL);
 	CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)StaticUserRequests, this, NULL, NULL);
 	//CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)StaticClientThread, this, NULL, NULL);
 }
@@ -89,7 +85,7 @@ bool Client::CheckForNumberInput(std::string input)
 		userinput == "2" || userinput == "3" ||
 		userinput == "4" || userinput == "5" ||
 		userinput == "6" || userinput == "7" ||
-		userinput == "8" || userinput == "9" )
+		userinput == "8" || userinput == "9")
 	{
 		return true;
 	}
@@ -108,9 +104,9 @@ void Client::UserRequests()
 
 	while (true)
 	{
-		if(!Entry)
+		if (!Entry)
 			std::cout << "What do you want to do? Press 'M' for Menu: ";
-		
+
 		std::getline(std::cin, _userinput);
 
 		if (_userinput == "m" || _userinput == "M")
@@ -157,50 +153,13 @@ void Client::UserRequests()
 			}
 			else
 				std::cout << "SORRY, THERE ARE NO OTHER OPTIONS FOR THIS PROGRAM!" << std::endl;
-			
+
 		}
 
 		std::cout << "\n" << std::endl;
-	
+
 	}
 }
-
-// 
-//void Client::deserialize(std::vector<std::string> &restore, char* buffer, int total_count)
-//{
-//	int temp1 = 0;
-//	int temp2 = 0;
-//	int lastNull = 0;
-//	bool isNum;
-//
-//	//std::cout << "BUFFER " << " is: " << buffer << std::endl;
-//
-//	while (lastNull != total_count)
-//	{
-//		//std::cout << "LAST NULL " << " is: " << lastNull << std::endl;
-//		for (int i = lastNull; i < total_count; i++) {
-//			const char *begin = &buffer[i];
-//			int size = 0;
-//			while (buffer[i++])
-//			{
-//				if (buffer[i] == 0)
-//				{
-//					temp1 = total_count - i;
-//					temp2 = (total_count - temp1);
-//					lastNull = temp2 + 1;
-//					//std::cout << "LAST NULL " << " is: " << lastNull << std::endl;
-//					size += 1;
-//					break;
-//				}
-//				else
-//				{
-//					size += 1;
-//				}
-//			}
-//			restore.push_back(std::string(begin, size));
-//		}
-//	}
-//}
 
 // determines the user's command and 
 // takes the corresponding action
@@ -215,25 +174,31 @@ void Client::SendRequests(int commandType)
 		DefineMenu(1);
 	else if (_commandType == 1) // sends a hello msg to the server; for testing purposes
 	{
-		char sendString[1024] = "H - Hello from client: ";
+		//char sendString[1024] = "H - Hello from client: ";
+		std::string hello = "H - Hello from client: ";
 
-		int len = send(_activeSocket, sendString, sizeof(sendString), 0);
+		int len = send(_activeSocket, hello.c_str(), sizeof(hello), 0);
 		if (len == SOCKET_ERROR)
 		{
 			std::cout << "len socket error" << std::endl;
 			_isActive = 0;
 		}
+		Sleep(1000);
+		ReceiveCommand(_commandType);
 	}
 	else if (_commandType == 2) // requests the most updated list
 	{
-		char sendString[1024] = "L - Requesting the most updated list. \n";
-		int len = send(_activeSocket, sendString, sizeof(sendString), 0);
+		std::string request = "L - Requesting the most updated list. \n ";
+
+		//char sendString[32] = "L - Requesting the most updated list. \n";
+		int len = send(_activeSocket, request.c_str(), sizeof(request), 0);
 
 		if (len == SOCKET_ERROR)
 		{
 			std::cout << "len socket error: " << WSAGetLastError() << std::endl;
 			_isActive = 0;
 		}
+		ReceiveCommand(_commandType);
 	}
 	// determines if the user chose any number (of a track) from the list to start streaming
 	else if (_commandType == 3)
@@ -273,12 +238,12 @@ void Client::SendRequests(int commandType)
 
 				std::string select = selectSong(_userinput) + " - User Requests Song Number: " + selectSong(_userinput);
 
-				char sendString[1024];
+				//char sendString[1024];
 
-				strcpy(sendString, select.c_str());
+				//strcpy(sendString, select.c_str());
 
 				if (select != "No song") {
-					int len = send(_activeSocket, sendString, sizeof(sendString), 0);
+					int len = send(_activeSocket, select.c_str(), sizeof(select), 0);
 
 					//std::cout << select << std::endl;
 					if (len == SOCKET_ERROR)
@@ -292,33 +257,158 @@ void Client::SendRequests(int commandType)
 			{
 				std::cout << "Wrong index!" << std::endl;
 			}
-			Sleep(5000);
+			Sleep(1000);
 		}
 		else
 		{
 			std::cout << "List is empty." << std::endl;
 		}
-
+		ReceiveCommand(_commandType);
 		//Sleep(1000);
 	}
 	else if (_commandType == 4) {
-	char sendString[1024] = "N - Requesting Audio File Stream. \n";
-	int len = send(_activeSocket, sendString, sizeof(sendString), 0);
-	if (len == SOCKET_ERROR)
-	 {
-		std::cout << "len socket error: " << WSAGetLastError() << std::endl;
-		_isActive = 0;
-	 }
+		char sendString[1024] = "N - Requesting Audio File Stream. \n";
+		int len = send(_activeSocket, sendString, sizeof(sendString), 0);
+		if (len == SOCKET_ERROR)
+		{
+			std::cout << "len socket error: " << WSAGetLastError() << std::endl;
+			_isActive = 0;
+		}
+
+		ReceiveCommand(_commandType);
 	}
 	else
 	{
 		_commandType = 0;
 	}
-	
+
 
 	ReleaseMutex(threadMutex);
 }
 
+// based on the user's chosen command 
+// receiving actions take place here
+void Client::ReceiveCommand(int command) {
+
+	switch (command) {
+
+	case 1:
+	{
+		int bytes = 0;
+		char recvMSG[4096];
+		//ZeroMemory(recvMSG, 1024);
+		int length = recv(_activeSocket, recvMSG, sizeof(recvMSG) + 1, NULL);
+		//receive_till_zero(_activeSocket, recvMSG, bytes);
+
+		if (length <= 0)
+		{
+			std::cout << "\nReceive has failed. Error that occured: " << WSAGetLastError() << std::endl;
+			//_isActive = 0;
+			break;
+			SendRequests(0);
+		}
+
+		std::cout << recvMSG << std::endl;
+		recvMSG[0] = '\0';
+		break;
+	}
+	case 2:
+	{
+		int bytes = 0;
+		wchar_t newList[4096];
+		ZeroMemory(newList, 4096);
+
+		int length = recv(_activeSocket, (char*)newList, sizeof(newList), NULL);
+
+		//std::wcout << newList << std::endl;
+
+		std::wstring serialList = newList;
+
+		std::vector<std::wstring> newVecList = WSplit(serialList, '|');
+
+		int i = 0;
+
+		if (storeList(newVecList)) {
+			std::cout << "Success!" << std::endl;
+		}
+		else {
+			std::cout << "Error in transfering file names" << std::endl;
+			break;
+		}
+
+		if (length <= 0)
+		{
+			std::cout << "\nReceive has failed. Error that occured: " << WSAGetLastError() << std::endl;
+			_isActive = 0;
+			break;
+		}
+
+		newList[0] = '\0';
+		break;
+	}
+
+	case 3:
+	{
+		std::cout << "Command 3 has started" << std::endl;
+
+		char recvMSG[4096];
+		ZeroMemory(recvMSG, 4096);
+		int length = recv(_activeSocket, (char*)recvMSG, sizeof(recvMSG), NULL);
+
+		memmove(recvMSG, recvMSG + 1, sizeof(recvMSG));
+
+		std::cout << recvMSG << std::endl;
+		if (length <= 0)
+		{
+			std::cout << "\nReceive has failed. Error that occured: " << WSAGetLastError() << std::endl;
+			_isActive = 0;
+			break;
+			SendRequests(0);
+		}
+		else {
+			int i = 0;
+			std::string trackInfo = recvMSG;
+
+			std::vector<std::string> songDataList = Split(trackInfo, '|');
+
+			do {
+				std::cout << songDataList[i] << std::endl;
+				i++;
+			} while (i < songDataList.size());
+
+		}
+
+		recvMSG[0] = '\0';
+		DefineMenu(2);
+		std::cout << "Menu has changed" << std::endl;
+		break;
+	}
+
+	case 4:
+	{
+
+		if (_commandType == 4) {
+
+			char recvMSG[1024];
+			int length = recv(_activeSocket, recvMSG, 1024, NULL);
+			if (length <= 0)
+			{
+				std::cout << "\nReceive has failed. Error that occured: " << WSAGetLastError() << std::endl;
+				//_isActive = 0;
+				break;
+				//SendRequests(0);
+			}
+
+			std::cout << "Streaming has started!" << std::endl;
+			break;
+		}
+
+	}
+
+
+	}
+
+}
 
 // fetches the current list that is temporarily stored.
 // NO FILES WILL BE STORED OR PLAYED LOCALLY ON THE CLIENT
@@ -327,7 +417,7 @@ void Client::ViewStoredList()
 	if (_storedList.empty())
 	{
 		std::cout << "\nThe list is empty!\n" << std::endl;
-		
+
 	}
 	else
 	{
@@ -340,25 +430,35 @@ void Client::ViewStoredList()
 }
 
 // received data by checking if all bytes have been sent
-bool Client::ReceiveData(char * data, int totalbytes)
+bool Client::ReceiveData(char* data, int totalbytes)
 {
-	int bytesreceived = 0; 
+	int bytesreceived = 0;
 	while (bytesreceived < totalbytes)
 	{
 		int ReceiveCheck = recv(_activeSocket, data + bytesreceived, totalbytes - bytesreceived, NULL);
-		if (ReceiveCheck == SOCKET_ERROR) 
+		if (ReceiveCheck == SOCKET_ERROR)
 			return false;
 		else if (ReceiveCheck == -1) {
 			std::cout << errno << std::endl;
 		}
 		bytesreceived += ReceiveCheck;
 	}
-	return true; 
+	return true;
+}
+std::vector<std::string> Client::Split(std::string stringToSplit, char delimeter)
+{
+	std::stringstream ss(stringToSplit);
+	std::string item;
+	std::vector<std::string> splittedStrings;
+	while (std::getline(ss, item, delimeter))
+	{
+		splittedStrings.push_back(item);
+	}
+	return splittedStrings;
 }
 
-
 // It is used to split the string on specified delimeter
-std::vector<std::wstring> Client::Split(std::wstring stringToSplit, wchar_t delimeter)
+std::vector<std::wstring> Client::WSplit(std::wstring stringToSplit, wchar_t delimeter)
 {
 	std::wstringstream ss(stringToSplit);
 	std::wstring item;
@@ -371,116 +471,23 @@ std::vector<std::wstring> Client::Split(std::wstring stringToSplit, wchar_t deli
 }
 
 
-// based on the user's chosen command 
-// receiving actions take place here
-void Client::Receive()
-{
-	while (_isActive == 1)
+bool Client::storeList(std::vector<std::wstring> list) {
+
+
+	for (int i = 0; i < list.size(); i++)
 	{
+		std::wcout << "[" << i << "] " << list[i] << std::endl;
 
-		try
-		{
-
-			if (_commandType == 1)
-			{
-				char recvMSG[1024];
-				ZeroMemory(recvMSG, 1024);
-				int length = recv(_activeSocket, recvMSG, 1024, NULL);
-				if (length <= 0)
-				{
-					std::cout << "\nReceive has failed. Error that occured: " << WSAGetLastError() << std::endl;
-					//_isActive = 0;
-					break;
-					//SendRequests(0);
-				}
-				recvMSG[0] = '\0';
-				std::cout << recvMSG << std::endl;
-
-			}
-
-			if (_commandType == 2)
-			{
-				int bytes = 0;
-				wchar_t newList[46];
-				ZeroMemory(newList, 46);
-				int length = receive_till_zero(_activeSocket, newList, bytes);
-
-				if (length <= 0)
-				{
-					std::cout << "\nReceive has failed. Error that occured: " << WSAGetLastError() << std::endl;
-					_isActive = 0;
-					break;
-				}
-
-				std::wstring serialList = newList;
-
-				std::vector<std::wstring> newVecList = Split(serialList, '|');
-
-				std::cout << std::endl;
-
-				for (int i = 0; i < newVecList.size(); i++)
-				{
-					std::wcout << "[" << i << "] " << newVecList[i] << std::endl;
-					_storedList.push_back(newVecList[i]);
-					_totalCount += i;
-				}
-
-				std::wcout << _storedList[0] << std::endl;
-			}
-				
-			if (_commandType == 3)
-			{
-				std::cout << "Command 3 has started" << std::endl;
-
-				
-				int bytes = 0;
-				wchar_t recvMSG[1024];
-				ZeroMemory(recvMSG, 1024);
-				int length = receive_till_zero(_activeSocket, recvMSG, bytes);
-
-				//std::cout << length << std::endl;
-				if (length <= 0)
-				/*if(ReceiveData((char*)recvMSG, sizeof(recvMSG)) == false)*/
-				{
-					std::cout << "\nReceive has failed. Error that occured: " << WSAGetLastError() << std::endl;
-					_isActive = 0;
-					break;
-					SendRequests(0);
-				}
-				else {
-					std::cout << "Warning" << std::endl;
-				}
-
-			std::wstring trackInfo = recvMSG;
-			recvMSG[0] = '\0';
-			std::wcout << trackInfo << std::endl;
-
-				DefineMenu(2);
-
-			}
-			if (_commandType == 4) {
-
-				char recvMSG[1024];
-				int length = recv(_activeSocket, recvMSG, 1024, NULL);
-				if (length <= 0)
-				{
-					std::cout << "\nReceive has failed. Error that occured: " << WSAGetLastError() << std::endl;
-					//_isActive = 0;
-					break;
-					//SendRequests(0);
-				}
-				recvMSG[0] = '\0';
-				std::cout << "Streaming has started!" << std::endl;
-
-			}
-			
-		}
-		catch (...)
-		{
-			std::cout << "\nError was Caught: " << WSAGetLastError() << std::endl;
-		}
+		_storedList.push_back(list[i]);
+		_totalCount += i;
 	}
-	
+
+	if (&_storedList[0] != nullptr) {
+		return true;
+	}
+	else {
+		return false;
+	}
 }
 
 void Client::getSongData() {
@@ -490,7 +497,7 @@ void Client::getSongData() {
 
 	do {
 		char recvMSG[1024];
-		ZeroMemory(recvMSG,1024);
+		ZeroMemory(recvMSG, 1024);
 		int rec = recv(_activeSocket, recvMSG, 1024, NULL);
 		if (rec <= 0)
 		{
@@ -498,7 +505,6 @@ void Client::getSongData() {
 			_isActive = 0;
 			break;
 		}
-		recvMSG[0] = '\0';
 		std::cout << "Message recieved:" << recvMSG[0] << std::endl;
 		length--;
 	} while (length > 1);
@@ -521,7 +527,7 @@ std::string Client::selectSong(std::string input) {
 				_selectedTrack = _storedList[i];
 				selection = temp + 1;
 				select = std::to_string(selection);
-				//std::cout << "You chose track: " << temp << std::endl
+				//std::cout << "You chose track: " << temp << std::endl;
 			}
 		}
 
@@ -533,6 +539,41 @@ std::string Client::selectSong(std::string input) {
 	}
 }
 
+int Client::receive_till_zero(SOCKET sock, wchar_t* tmpbuf, int& numbytes) {
+	int i = 0;
+	std::wstring Converter;
+	do {
+		// Check if we have a complete message
+		for (; i < numbytes; i++) {
+			if (tmpbuf[i] == '\0') {
+				// \0 indicate end of message! so we are done
+				return i + 1; // return length of message
+			}
+		}
+		long n = recv(sock, (char*)tmpbuf + numbytes, sizeof(tmpbuf), 0);
+		Converter = tmpbuf;
+		std::wcout << "Server >> " << Converter << std::endl;
+
+		if (n == SOCKET_ERROR) {
+			std::cerr << "Error in recv(). Quitting...." << std::endl;
+			return 0;
+			break;
+		}
+
+		else if (n == 0) {
+			std::cout << "Server disconnected..." << std::endl;
+			return 0;
+			break;
+		}
+
+		//numbytes, 0);
+		if (n == -1) {
+			return -1; // operation failed!
+		}
+		numbytes += n;
+
+	} while (true);
+}
 
 bool Client::InitializePlayer(BYTE* recvbuffer) {
 
@@ -541,7 +582,7 @@ bool Client::InitializePlayer(BYTE* recvbuffer) {
 	DSBUFFERDESC bufferDesc;
 	HRESULT result;
 	IDirectSoundBuffer* tempBuffer;
-	
+
 	// Set the wave format of the secondary buffer that this wave file will be loaded onto.
 	// The value of wfx.Format.nAvgBytesPerSec will be very useful to you since it gives you
 	// an approximate value for how many bytes it takes to hold one second of audio data.
@@ -584,42 +625,6 @@ bool Client::InitializePlayer(BYTE* recvbuffer) {
 	tempBuffer = nullptr;
 
 	return true;
-}
-
-int Client::receive_till_zero(SOCKET sock, wchar_t* tmpbuf, int& numbytes) {
-  int i = 0;
-  std::wstring Converter;
-  do {
-	std::cout << "numbytes: " << numbytes << std::endl;
-	// Check if we have a complete message
-	for (; i < numbytes; i++) {
-	  if (tmpbuf[i] == '\0') {
-		// \0 indicate end of message! so we are done
-		return i + 1; // return length of message
-	  }
-	}
-	long n = recv(sock, (char*)tmpbuf + numbytes, sizeof(tmpbuf), 0);
-	Converter = tmpbuf;
-	std::wcout << "Server >> " << Converter << std::endl;
-
-	if (n == SOCKET_ERROR) {
-	  std::cerr << "Error in recv(). Quitting...." << std::endl;
-	  return 0;
-	  break;
-	}
-
-	else if (n == 0) {
-	  std::cout << "Server disconnected..." << std::endl;
-	  return 0;
-	  break;
-	}
-
-	//numbytes, 0);
-	if (n == -1) {
-	  return -1; // operation failed!
-	}
-	numbytes += n;
-  } while (true);
 }
 
 bool Client::PlayWaveFile(BYTE* recvbuffer)
@@ -714,4 +719,3 @@ bool Client::PlayWaveFile(BYTE* recvbuffer)
 	CloseHandle(playEventHandles[0]);
 	return true;
 }
-

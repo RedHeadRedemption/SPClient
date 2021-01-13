@@ -18,15 +18,14 @@ class Client
 {
 
 public:
-	
+
 	// constructor/de-constructor
 	Client(SOCKET clientSocket);
 	~Client(void);
 
 	// methods
 
-	void Receive();
-	int receive_till_zero(SOCKET sock, wchar_t* tmpbuf, int& numbytes);
+	//void Receive();
 	void UserRequests();
 
 	// active client
@@ -43,10 +42,12 @@ private:
 	DWORD dataBufferSize;
 	DWORD averageBytesPerSecond;
 
-	static void StaticReceive(LPVOID param);
+	//static void StaticReceive(LPVOID param);
 	static void StaticUserRequests(LPVOID param);
 
 	HANDLE threadMutex;
+
+	int receive_till_zero(SOCKET sock, wchar_t* tmpbuf, int& numbytes);
 
 	std::vector<std::wstring> _storedList;
 	int _totalCount;
@@ -56,14 +57,22 @@ private:
 	std::string _selectTrackNum;
 	std::string _userinput;
 	bool CheckForNumberInput(std::string input);
-	void deserialize(std::vector<std::string> &restore, char* buffer, int total_count);
-	bool ReceiveData(char * data, int totalbytes);
+	void deserialize(std::vector<std::string>& restore, char* buffer, int total_count);
+
+	void ReceiveCommand(int command);
+
+	bool ReceiveData(char* data, int totalbytes);
 	void SendRequests(int commandType);
 	void DefineMenu(int choice);
 	void ViewStoredList();
 	bool PlayWaveFile(BYTE* recvbuffer);
 	bool InitializePlayer(BYTE* recvbuffer);
-	std::vector<std::wstring> Split(std::wstring stringToSplit, wchar_t delimeter);
+
+	std::vector<std::string> Split(std::string stringToSplit, char delimeter);
+	std::vector<std::wstring> WSplit(std::wstring stringToSplit, wchar_t delimeter);
 	void getSongData();
 	std::string selectSong(std::string input);
+
+	std::vector<char> readMessage();
+	bool storeList(std::vector<std::wstring> list);
 };
