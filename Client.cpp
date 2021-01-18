@@ -139,7 +139,7 @@ void Client::UserRequests()
 			_isActive = 0;
 			break;
 		}
-		else if (_userinput == "n" || _userinput == "N")
+		else if (_userinput == "p" || _userinput == "P")
 		{
 			SendRequests(4);
 		}
@@ -267,8 +267,10 @@ void Client::SendRequests(int commandType)
 		//Sleep(1000);
 	}
 	else if (_commandType == 4) {
-		char sendString[1024] = "N - Requesting Audio File Stream. \n";
-		int len = send(_activeSocket, sendString, sizeof(sendString), 0);
+
+		std::string request = "P - Requesting Audio File Stream. \n";
+		//char sendString[1024] = "P - Requesting Audio File Stream. \n";
+		int len = send(_activeSocket, request.c_str(), sizeof(request), 0);
 		if (len == SOCKET_ERROR)
 		{
 			std::cout << "len socket error: " << WSAGetLastError() << std::endl;
@@ -353,11 +355,12 @@ void Client::ReceiveCommand(int command) {
 
 		char recvMSG[4096];
 		ZeroMemory(recvMSG, 4096);
-		int length = recv(_activeSocket, (char*)recvMSG, sizeof(recvMSG), NULL);
+		int length = recv(_activeSocket, recvMSG, sizeof(recvMSG) + 16, NULL);
 
 		memmove(recvMSG, recvMSG + 1, sizeof(recvMSG));
 
 		std::cout << recvMSG << std::endl;
+
 		if (length <= 0)
 		{
 			std::cout << "\nReceive has failed. Error that occured: " << WSAGetLastError() << std::endl;
@@ -370,27 +373,33 @@ void Client::ReceiveCommand(int command) {
 			std::string trackInfo = recvMSG;
 
 			std::vector<std::string> songDataList = Split(trackInfo, '|');
-
 			do {
 				std::cout << songDataList[i] << std::endl;
 				i++;
 			} while (i < songDataList.size());
 
+			chunkSize = strtol(songDataList[0].c_str(),0,0);
+			sampleRate = strtol(songDataList[1].c_str(), 0, 0);
+			dataSize = strtol(songDataList[2].c_str(), 0, 0);
+			channels = atoi(songDataList[3].c_str());
+			bitsPerSample = atoi(songDataList[4].c_str());
+
+			std::cout << chunkSize << " | "<< sampleRate << " | " << dataSize << " | " << channels << " | " << bitsPerSample << std::endl;
+
 		}
 
 		recvMSG[0] = '\0';
 		DefineMenu(2);
-		std::cout << "Menu has changed" << std::endl;
 		break;
 	}
 
 	case 4:
 	{
 
-		if (_commandType == 4) {
-
-			char recvMSG[1024];
-			int length = recv(_activeSocket, recvMSG, 1024, NULL);
+		std::cout << "Play command started" << std::endl;
+			char streamIn[4096];
+			ZeroMemory(streamIn, 4096);
+			int length = recv(_activeSocket, streamIn, sizeof(streamIn), NULL);
 			if (length <= 0)
 			{
 				std::cout << "\nReceive has failed. Error that occured: " << WSAGetLastError() << std::endl;
@@ -399,9 +408,32 @@ void Client::ReceiveCommand(int command) {
 				//SendRequests(0);
 			}
 
-			std::cout << "Streaming has started!" << std::endl;
-			break;
-		}
+			if (InitializePlayer()) {
+
+			std::cout << "Player initialization success!" << std::endl;
+
+			BYTE* streamBytes = new BYTE[sizeof(streamIn) - 1];
+			std::memcpy(streamBytes, streamIn, sizeof(streamIn) - 1);
+			bool result = PlayWaveFile(streamBytes);
+
+				if (result == true) {
+					std::cout << "Playing song... " << std::endl;
+				}
+				else {
+
+					std::cout << "Could not play song." << std::endl;
+					break;
+				}
+			}
+			else {
+
+				std::cout << "Player initialization failed... " << std::endl;
+				break;
+			}
+
+
+			//std::cout << "Streaming has started!" << std::endl;
+			//break;
 
 	}
 
@@ -539,49 +571,67 @@ std::string Client::selectSong(std::string input) {
 	}
 }
 
-int Client::receive_till_zero(SOCKET sock, wchar_t* tmpbuf, int& numbytes) {
-	int i = 0;
-	std::wstring Converter;
-	do {
-		// Check if we have a complete message
-		for (; i < numbytes; i++) {
-			if (tmpbuf[i] == '\0') {
-				// \0 indicate end of message! so we are done
-				return i + 1; // return length of message
-			}
-		}
-		long n = recv(sock, (char*)tmpbuf + numbytes, sizeof(tmpbuf), 0);
-		Converter = tmpbuf;
-		std::wcout << "Server >> " << Converter << std::endl;
-
-		if (n == SOCKET_ERROR) {
-			std::cerr << "Error in recv(). Quitting...." << std::endl;
-			return 0;
-			break;
-		}
-
-		else if (n == 0) {
-			std::cout << "Server disconnected..." << std::endl;
-			return 0;
-			break;
-		}
-
-		//numbytes, 0);
-		if (n == -1) {
-			return -1; // operation failed!
-		}
-		numbytes += n;
-
-	} while (true);
-}
-
-bool Client::InitializePlayer(BYTE* recvbuffer) {
+bool Client::InitializePlayer() {
 
 	WAVEFORMATEXTENSIBLE wfx = { 0 };
 	WAVEFORMATEX waveFormat;
 	DSBUFFERDESC bufferDesc;
 	HRESULT result;
 	IDirectSoundBuffer* tempBuffer;
+
+	// Initialize the direct sound interface pointer for the default sound device.
+	result = DirectSoundCreate8(NULL, &directSound, NULL);
+	if (FAILED(result))
+	{
+		return false;
+	}
+
+	// Set the cooperative level to priority so the format of the primary sound buffer can be modified.
+	// We use the handle of the desktop window since we are a console application.  If you do write a 
+	// graphical application, you should use the HWnd of the graphical application. 
+	result = directSound->SetCooperativeLevel(GetDesktopWindow(), DSSCL_PRIORITY);
+	if (FAILED(result))
+	{
+		return false;
+	}
+
+	// Setup the primary buffer description.
+	bufferDesc.dwSize = sizeof(DSBUFFERDESC);
+	bufferDesc.dwFlags = DSBCAPS_PRIMARYBUFFER | DSBCAPS_CTRLVOLUME;
+	bufferDesc.dwBufferBytes = dataSize;
+	bufferDesc.dwReserved = 0;
+	bufferDesc.lpwfxFormat = NULL;
+	bufferDesc.guid3DAlgorithm = GUID_NULL;
+
+	// Get control of the primary sound buffer on the default sound device.
+	result = directSound->CreateSoundBuffer(&bufferDesc, &primaryBuffer, NULL);
+	if (FAILED(result))
+	{
+		return false;
+	}
+
+	// Setup the format of the primary sound bufffer.
+	// In this case it is a .WAV file recorded at 44,100 samples per second in 16-bit stereo (cd audio format).
+	// Really, we should set this up from the wave file format loaded from the file.
+	waveFormat.wFormatTag = WAVE_FORMAT_PCM;
+	waveFormat.nSamplesPerSec = sampleRate;
+
+	//44100;
+	waveFormat.wBitsPerSample = bitsPerSample;
+
+	//16;
+	waveFormat.nChannels = channels;
+	waveFormat.nBlockAlign = (waveFormat.wBitsPerSample / 8) * waveFormat.nChannels;
+	waveFormat.nAvgBytesPerSec = waveFormat.nSamplesPerSec * waveFormat.nBlockAlign;
+	waveFormat.cbSize = chunkSize;
+
+	// Set the primary buffer to be the wave format specified.
+	result = primaryBuffer->SetFormat(&waveFormat);
+	if (FAILED(result))
+	{
+		return false;
+	}
+	return true;
 
 	// Set the wave format of the secondary buffer that this wave file will be loaded onto.
 	// The value of wfx.Format.nAvgBytesPerSec will be very useful to you since it gives you
@@ -620,7 +670,7 @@ bool Client::InitializePlayer(BYTE* recvbuffer) {
 		return false;
 	}
 
-	// Release the temporary buffer.
+	 // Release the temporary buffer.
 	tempBuffer->Release();
 	tempBuffer = nullptr;
 
@@ -643,14 +693,21 @@ bool Client::PlayWaveFile(BYTE* recvbuffer)
 	DSBPOSITIONNOTIFY positionNotify[2];
 
 	// Set position of playback at the beginning of the sound buffer.
-	result = secondaryBuffer->SetCurrentPosition(0);
+
+	result = primaryBuffer->SetCurrentPosition(0);
+
+	std::cout << "Playback being set at the beggining of the buffer." << std::endl;
+	//result = secondaryBuffer->SetCurrentPosition(0);
 	if (FAILED(result))
 	{
 		return false;
 	}
 
 	// Set volume of the buffer to 100%.
-	result = secondaryBuffer->SetVolume(DSBVOLUME_MAX);
+	result = primaryBuffer->SetVolume(DSBVOLUME_MAX);
+
+	std::cout << "Buffer volume being set to max" << std::endl;
+	//result = secondaryBuffer->SetVolume(DSBVOLUME_MAX);
 	if (FAILED(result))
 	{
 		return false;
@@ -664,11 +721,15 @@ bool Client::PlayWaveFile(BYTE* recvbuffer)
 	HANDLE playEventHandles[1];
 	playEventHandles[0] = CreateEvent(NULL, FALSE, FALSE, NULL);
 
-	result = secondaryBuffer->QueryInterface(IID_IDirectSoundNotify8, (LPVOID*)&directSoundNotify);
+	result = primaryBuffer->QueryInterface(IID_IDirectSoundNotify8, (LPVOID*)&directSoundNotify);
+
+	std::cout << "Event notification being created." << std::endl;
+	//result = secondaryBuffer->QueryInterface(IID_IDirectSoundNotify8, (LPVOID*)&directSoundNotify);
 	if (FAILED(result))
 	{
 		return false;
 	}
+
 	// This notification is used to indicate that we have finished playing the buffer of audio. In
 	// the assignment, you will need two different notifications as mentioned above. 
 	positionNotify[0].dwOffset = DSBPN_OFFSETSTOP;
@@ -685,11 +746,16 @@ bool Client::PlayWaveFile(BYTE* recvbuffer)
 	// buffer, but for the assignment, you will only want to lock the half of the buffer that is not being played.
 	// You will definately want to look up the methods for the IDIRECTSOUNDBUFFER8 interface to see what these
 	// methods do and what the parameters are used for. 
-	result = secondaryBuffer->Lock(0, dataBufferSize, (void**)&bufferPtr1, (DWORD*)&bufferSize1, (void**)&bufferPtr2, (DWORD*)&bufferSize2, 0);
+
+	result = primaryBuffer->Lock(0, dataBufferSize, (void**)&bufferPtr1, (DWORD*)&bufferSize1, (void**)&bufferPtr2, (DWORD*)&bufferSize2, 0);
+
+	std::cout << "First part of buffer is being locked" << std::endl;
+	//result = secondaryBuffer->Lock(0, dataBufferSize, (void**)&bufferPtr1, (DWORD*)&bufferSize1, (void**)&bufferPtr2, (DWORD*)&bufferSize2, 0);
 	if (FAILED(result))
 	{
 		return false;
 	}
+
 	// Copy the wave data into the buffer. If you need to insert some silence into the buffer, insert values of 0.
 	memcpy(bufferPtr1, dataBuffer, bufferSize1);
 	if (bufferPtr2 != NULL)
@@ -697,19 +763,30 @@ bool Client::PlayWaveFile(BYTE* recvbuffer)
 		memcpy(bufferPtr2, dataBuffer, bufferSize2);
 	}
 	// Unlock the secondary buffer after the data has been written to it.
-	result = secondaryBuffer->Unlock((void*)bufferPtr1, bufferSize1, (void*)bufferPtr2, bufferSize2);
+
+
+	result = primaryBuffer->Unlock((void*)bufferPtr1, bufferSize1, (void*)bufferPtr2, bufferSize2);
+
+	std::cout << "Buffer is being unlocked." << std::endl;
+	//result = secondaryBuffer->Unlock((void*)bufferPtr1, bufferSize1, (void*)bufferPtr2, bufferSize2);
 	if (FAILED(result))
 	{
 		return false;
 	}
+
 	// Play the contents of the secondary sound buffer. If you want play to go back to the start of the buffer
 	// again, set the last parameter to DSBPLAY_LOOPING instead of 0.  If play is already in progress, then 
 	// play will just continue. 
-	result = secondaryBuffer->Play(0, 0, 0);
+
+	result = primaryBuffer->Play(0, 0, 0);
+
+	std::cout << "Playing song." << std::endl;
+	//result = secondaryBuffer->Play(0, 0, 0);
 	if (FAILED(result))
 	{
 		return false;
 	}
+
 	// Wait for notifications.  In this case, we only have one notification so we could use WaitForSingleObject,
 	// but for the assignment you will need more than one notification, so you will need WaitForMultipleObjects
 	result = WaitForMultipleObjects(1, playEventHandles, FALSE, INFINITE);

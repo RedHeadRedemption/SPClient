@@ -33,6 +33,12 @@ public:
 
 private:
 
+	DWORD dataSize;
+	DWORD sampleRate;
+	short bitsPerSample;
+	short channels;
+	WORD chunkSize;
+
 	unsigned long timeout;
 	SOCKET _activeSocket;
 	IDirectSound8* directSound = nullptr;
@@ -46,8 +52,6 @@ private:
 	static void StaticUserRequests(LPVOID param);
 
 	HANDLE threadMutex;
-
-	int receive_till_zero(SOCKET sock, wchar_t* tmpbuf, int& numbytes);
 
 	std::vector<std::wstring> _storedList;
 	int _totalCount;
@@ -66,7 +70,7 @@ private:
 	void DefineMenu(int choice);
 	void ViewStoredList();
 	bool PlayWaveFile(BYTE* recvbuffer);
-	bool InitializePlayer(BYTE* recvbuffer);
+	bool InitializePlayer();
 
 	std::vector<std::string> Split(std::string stringToSplit, char delimeter);
 	std::vector<std::wstring> WSplit(std::wstring stringToSplit, wchar_t delimeter);
