@@ -408,20 +408,16 @@ void Client::ReceiveCommand(int command) {
 				//SendRequests(0);
 			}
 
-			bool result = InitializePrimary();
 
-			if (!result) {
-				std::cout << "Unable to initialise Primary Buffer" << std::endl;
-
-				break;
-			}
+			bool result;
+			result = InitializePrimary();
 
 			std::cout << "Primary buffer initialization success!" << std::endl;
 
 			result = InitializeSecondary();
 
 
-			if (!result) {
+			if (result == false) {
 				std::cout << "Unable to initialise Secondary Buffer" << std::endl;
 
 				break;
@@ -590,6 +586,7 @@ bool Client::InitializePrimary() {
 	result = DirectSoundCreate8(NULL, &directSound, NULL);
 	if (FAILED(result))
 	{
+		std::cout << "Primary buffer interface intialization failed." << std::endl;
 		return false;
 	}
 
@@ -599,6 +596,7 @@ bool Client::InitializePrimary() {
 	result = directSound->SetCooperativeLevel(GetDesktopWindow(), DSSCL_PRIORITY);
 	if (FAILED(result))
 	{
+		std::cout << "Primary buffer cooperation level change failed." << std::endl;
 		return false;
 	}
 
@@ -614,6 +612,7 @@ bool Client::InitializePrimary() {
 	result = directSound->CreateSoundBuffer(&bufferDesc, &primaryBuffer, NULL);
 	if (FAILED(result))
 	{
+		std::cout << "Primary buffer interface pointer intialization failed." << std::endl;
 		return false;
 	}
 
@@ -621,10 +620,10 @@ bool Client::InitializePrimary() {
 	// In this case it is a .WAV file recorded at 44,100 samples per second in 16-bit stereo (cd audio format).
 	// Really, we should set this up from the wave file format loaded from the file.
 	waveFormat.wFormatTag = WAVE_FORMAT_PCM;
-	waveFormat.nSamplesPerSec = sampleRate;
+	waveFormat.nSamplesPerSec = 44100;
 
 	//44100;
-	waveFormat.wBitsPerSample = bitsPerSample;
+	waveFormat.wBitsPerSample = 16;
 
 	//16;
 	waveFormat.nChannels = channels;
@@ -636,10 +635,11 @@ bool Client::InitializePrimary() {
 	result = primaryBuffer->SetFormat(&waveFormat);
 	if (FAILED(result))
 	{
+		std::cout << "Primary buffer format setting failed." << std::endl;
 		return false;
 	}
 
-	std::cout << "Primary Buffer Initialization success." << std::endl;
+	//std::cout << "Primary Buffer Initialization success." << std::endl;
 
 	return 0;
 }
@@ -656,13 +656,12 @@ bool Client::InitializeSecondary() {
 	DWORD filetype;
 	HRESULT hr = S_OK;
 
-
-	waveFormat.wFormatTag = wfx.Format.wFormatTag;
-	waveFormat.nSamplesPerSec = wfx.Format.nSamplesPerSec;
-	waveFormat.wBitsPerSample = wfx.Format.wBitsPerSample;
-	waveFormat.nChannels = wfx.Format.nChannels;
-	waveFormat.nBlockAlign = wfx.Format.nBlockAlign;
-	waveFormat.nAvgBytesPerSec = wfx.Format.nAvgBytesPerSec;
+	waveFormat.wFormatTag = WAVE_FORMAT_PCM;
+	waveFormat.nSamplesPerSec = sampleRate;
+	waveFormat.wBitsPerSample = bitsPerSample;
+	waveFormat.nChannels = channels;
+	waveFormat.nBlockAlign = (waveFormat.wBitsPerSample / 8) * waveFormat.nChannels;
+	waveFormat.nAvgBytesPerSec = waveFormat.nSamplesPerSec * waveFormat.nBlockAlign;
 	waveFormat.cbSize = 0;
 
 	// Set the buffer description of the secondary sound buffer that the wave file will be loaded onto. In
@@ -670,7 +669,7 @@ bool Client::InitializeSecondary() {
 	// secondary buffer should only be large enough to hold approximately four seconds of data. 
 	bufferDesc.dwSize = sizeof(DSBUFFERDESC);
 	bufferDesc.dwFlags = DSBCAPS_CTRLVOLUME | DSBCAPS_GLOBALFOCUS | DSBCAPS_CTRLPOSITIONNOTIFY;
-	bufferDesc.dwBufferBytes = dataBufferSize;
+	bufferDesc.dwBufferBytes = waveFormat.nAvgBytesPerSec * 4;
 	bufferDesc.dwReserved = 0;
 	bufferDesc.lpwfxFormat = &waveFormat;
 	bufferDesc.guid3DAlgorithm = GUID_NULL;
@@ -679,6 +678,7 @@ bool Client::InitializeSecondary() {
 	result = directSound->CreateSoundBuffer(&bufferDesc, &tempBuffer, NULL);
 	if (FAILED(result))
 	{
+		std::cout << "Unable to crate temporary buffer" << std::endl;
 		return false;
 	}
 
@@ -686,6 +686,7 @@ bool Client::InitializeSecondary() {
 	result = tempBuffer->QueryInterface(IID_IDirectSoundBuffer8, (void**)&secondaryBuffer);
 	if (FAILED(result))
 	{
+		std::cout << "Buffer testing failed" << std::endl;
 		return false;
 	}
 
@@ -713,22 +714,24 @@ bool Client::PlayWaveFile(BYTE* recvbuffer)
 
 	// Set position of playback at the beginning of the sound buffer.
 
-	result = primaryBuffer->SetCurrentPosition(0);
+	//result = primaryBuffer->SetCurrentPosition(0);
 
-	std::cout << "Playback being set at the beggining of the buffer." << std::endl;
-	//result = secondaryBuffer->SetCurrentPosition(0);
+	
+	result = secondaryBuffer->SetCurrentPosition(0);
 	if (FAILED(result))
 	{
+		std::cout << "Playback could not be set at the beggining of the buffer." << std::endl;
 		return false;
 	}
 
 	// Set volume of the buffer to 100%.
 	result = primaryBuffer->SetVolume(DSBVOLUME_MAX);
 
-	std::cout << "Buffer volume being set to max" << std::endl;
+	
 	//result = secondaryBuffer->SetVolume(DSBVOLUME_MAX);
 	if (FAILED(result))
 	{
+		std::cout << "Buffer volume cannot be set to max" << std::endl;
 		return false;
 	}
 
@@ -739,13 +742,11 @@ bool Client::PlayWaveFile(BYTE* recvbuffer)
 	// you should copy more data into the secondary buffer. 
 	HANDLE playEventHandles[1];
 	playEventHandles[0] = CreateEvent(NULL, FALSE, FALSE, NULL);
-
-	result = primaryBuffer->QueryInterface(IID_IDirectSoundNotify8, (LPVOID*)&directSoundNotify);
-
-	std::cout << "Event notification being created." << std::endl;
-	//result = secondaryBuffer->QueryInterface(IID_IDirectSoundNotify8, (LPVOID*)&directSoundNotify);
+	
+	result = secondaryBuffer->QueryInterface(IID_IDirectSoundNotify8, (LPVOID*)&directSoundNotify);
 	if (FAILED(result))
 	{
+		std::cout << "Event notification cannot be created." << std::endl;
 		return false;
 	}
 
@@ -766,12 +767,12 @@ bool Client::PlayWaveFile(BYTE* recvbuffer)
 	// You will definately want to look up the methods for the IDIRECTSOUNDBUFFER8 interface to see what these
 	// methods do and what the parameters are used for. 
 
-	result = primaryBuffer->Lock(0, dataBufferSize, (void**)&bufferPtr1, (DWORD*)&bufferSize1, (void**)&bufferPtr2, (DWORD*)&bufferSize2, 0);
+	//result = primaryBuffer->Lock(0, dataBufferSize, (void**)&bufferPtr1, (DWORD*)&bufferSize1, (void**)&bufferPtr2, (DWORD*)&bufferSize2, 0);
 
-	std::cout << "First part of buffer is being locked" << std::endl;
-	//result = secondaryBuffer->Lock(0, dataBufferSize, (void**)&bufferPtr1, (DWORD*)&bufferSize1, (void**)&bufferPtr2, (DWORD*)&bufferSize2, 0);
+	result = secondaryBuffer->Lock(sizeof(&dataBuffer)/2, sizeof(&dataBuffer), (void**)&bufferPtr1, (DWORD*)&bufferSize1, (void**)&bufferPtr2, (DWORD*)&bufferSize2, 0);
 	if (FAILED(result))
 	{
+		std::cout << "First part of buffer cannot be locked" << std::endl;
 		return false;
 	}
 
@@ -783,13 +784,11 @@ bool Client::PlayWaveFile(BYTE* recvbuffer)
 	}
 	// Unlock the secondary buffer after the data has been written to it.
 
-
-	result = primaryBuffer->Unlock((void*)bufferPtr1, bufferSize1, (void*)bufferPtr2, bufferSize2);
-
-	std::cout << "Buffer is being unlocked." << std::endl;
-	//result = secondaryBuffer->Unlock((void*)bufferPtr1, bufferSize1, (void*)bufferPtr2, bufferSize2);
+	
+	result = secondaryBuffer->Unlock((void*)bufferPtr1, bufferSize1, (void*)bufferPtr2, bufferSize2);
 	if (FAILED(result))
 	{
+		std::cout << "Buffer cannot be unlocked." << std::endl;
 		return false;
 	}
 
@@ -797,12 +796,11 @@ bool Client::PlayWaveFile(BYTE* recvbuffer)
 	// again, set the last parameter to DSBPLAY_LOOPING instead of 0.  If play is already in progress, then 
 	// play will just continue. 
 
-	result = primaryBuffer->Play(0, 0, 0);
-
-	std::cout << "Playing song." << std::endl;
-	//result = secondaryBuffer->Play(0, 0, 0);
+	
+	result = secondaryBuffer->Play(0, 0, 0);
 	if (FAILED(result))
 	{
+		std::cout << "Couldn't song." << std::endl;
 		return false;
 	}
 
