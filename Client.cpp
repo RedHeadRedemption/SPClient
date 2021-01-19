@@ -408,33 +408,40 @@ void Client::ReceiveCommand(int command) {
 				//SendRequests(0);
 			}
 
-			if (InitializePlayer()) {
+			bool result = InitializePrimary();
 
-			  std::cout << "Player initialization success!" << std::endl;
+			if (!result) {
+				std::cout << "Unable to initialise Primary Buffer" << std::endl;
 
-			  BYTE* streamBytes = new BYTE[sizeof(streamIn) - 1];
-			  std::memcpy(streamBytes, streamIn, sizeof(streamIn) - 1);
-			  bool result = PlayWaveFile(streamBytes);
-
-			  if (result == true) {
-				  std::cout << "Playing song... " << std::endl;
-			  }
-			  else {
-				  
-				  std::cout << "Could not play song." << std::endl;
-				  break;
-			  }
-			}
-			else {
-
-				std::cout << "Player initialization failed... " << std::endl;
 				break;
 			}
 
+			std::cout << "Primary buffer initialization success!" << std::endl;
+
+			result = InitializeSecondary();
+
+
+			if (!result) {
+				std::cout << "Unable to initialise Secondary Buffer" << std::endl;
+
+				break;
+			}
+
+			BYTE* streamBytes = new BYTE[sizeof(streamIn) - 1];
+			std::memcpy(streamBytes, streamIn, sizeof(streamIn) - 1);
+			result = PlayWaveFile(streamBytes);
+
+			if (result == true) {
+				std::cout << "Playing song... " << std::endl;
+			}
+			else {
+
+				std::cout << "Could not play song." << std::endl;
+				break;
+			}
 
 			//std::cout << "Streaming has started!" << std::endl;
 			//break;
-
 	}
 
 
@@ -571,7 +578,7 @@ std::string Client::selectSong(std::string input) {
 	}
 }
 
-bool Client::InitializePlayer() {
+bool Client::InitializePrimary() {
 
 	WAVEFORMATEXTENSIBLE wfx = { 0 };
 	WAVEFORMATEX waveFormat;
@@ -583,7 +590,6 @@ bool Client::InitializePlayer() {
 	result = DirectSoundCreate8(NULL, &directSound, NULL);
 	if (FAILED(result))
 	{
-		std::cout << "One " << result << std::endl;
 		return false;
 	}
 
@@ -593,7 +599,6 @@ bool Client::InitializePlayer() {
 	result = directSound->SetCooperativeLevel(GetDesktopWindow(), DSSCL_PRIORITY);
 	if (FAILED(result))
 	{
-	  std::cout << "Two " << result << std::endl;
 		return false;
 	}
 
@@ -605,11 +610,10 @@ bool Client::InitializePlayer() {
 	bufferDesc.lpwfxFormat = NULL;
 	bufferDesc.guid3DAlgorithm = GUID_NULL;
 
-	// Get control of the primary sound buffer on the default sound device.
+	// Initialize the direct sound interface pointer for the default sound device.
 	result = directSound->CreateSoundBuffer(&bufferDesc, &primaryBuffer, NULL);
 	if (FAILED(result))
 	{
-	  std::cout << "Three " << result << std::endl;
 		return false;
 	}
 
@@ -632,14 +636,27 @@ bool Client::InitializePlayer() {
 	result = primaryBuffer->SetFormat(&waveFormat);
 	if (FAILED(result))
 	{
-	  std::cout << "Four " << result << std::endl;
 		return false;
 	}
-	return true;
 
-	// Set the wave format of the secondary buffer that this wave file will be loaded onto.
-	// The value of wfx.Format.nAvgBytesPerSec will be very useful to you since it gives you
-	// an approximate value for how many bytes it takes to hold one second of audio data.
+	std::cout << "Primary Buffer Initialization success." << std::endl;
+
+	return 0;
+}
+
+bool Client::InitializeSecondary() {
+	WAVEFORMATEXTENSIBLE wfx = { 0 };
+	WAVEFORMATEX waveFormat;
+	DSBUFFERDESC bufferDesc;
+	HRESULT result;
+	IDirectSoundBuffer* tempBuffer;
+
+	DWORD chunkSize;
+	DWORD chunkPosition;
+	DWORD filetype;
+	HRESULT hr = S_OK;
+
+
 	waveFormat.wFormatTag = wfx.Format.wFormatTag;
 	waveFormat.nSamplesPerSec = wfx.Format.nSamplesPerSec;
 	waveFormat.wBitsPerSample = wfx.Format.wBitsPerSample;
@@ -652,10 +669,8 @@ bool Client::InitializePlayer() {
 	// this example, we setup a buffer the same size as that of the audio data.  For the assignment, your
 	// secondary buffer should only be large enough to hold approximately four seconds of data. 
 	bufferDesc.dwSize = sizeof(DSBUFFERDESC);
-
 	bufferDesc.dwFlags = DSBCAPS_CTRLVOLUME | DSBCAPS_GLOBALFOCUS | DSBCAPS_CTRLPOSITIONNOTIFY;
-	bufferDesc.dwBufferBytes = waveFormat.nAvgBytesPerSec * 4;
-	//dataBufferSize;
+	bufferDesc.dwBufferBytes = dataBufferSize;
 	bufferDesc.dwReserved = 0;
 	bufferDesc.lpwfxFormat = &waveFormat;
 	bufferDesc.guid3DAlgorithm = GUID_NULL;
@@ -664,7 +679,6 @@ bool Client::InitializePlayer() {
 	result = directSound->CreateSoundBuffer(&bufferDesc, &tempBuffer, NULL);
 	if (FAILED(result))
 	{
-	  std::cout << "Five " << result << std::endl;
 		return false;
 	}
 
@@ -672,11 +686,10 @@ bool Client::InitializePlayer() {
 	result = tempBuffer->QueryInterface(IID_IDirectSoundBuffer8, (void**)&secondaryBuffer);
 	if (FAILED(result))
 	{
-	  std::cout << "Six " << result << std::endl;
 		return false;
 	}
 
-	 // Release the temporary buffer.
+	// Release the temporary buffer.
 	tempBuffer->Release();
 	tempBuffer = nullptr;
 
@@ -706,7 +719,6 @@ bool Client::PlayWaveFile(BYTE* recvbuffer)
 	//result = secondaryBuffer->SetCurrentPosition(0);
 	if (FAILED(result))
 	{
-	  std::cout << "Could not SetCurrentPosition " << result << std::endl;
 		return false;
 	}
 

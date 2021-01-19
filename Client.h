@@ -70,7 +70,9 @@ private:
 	void DefineMenu(int choice);
 	void ViewStoredList();
 	bool PlayWaveFile(BYTE* recvbuffer);
-	bool InitializePlayer();
+	bool InitializePrimary();
+
+	bool InitializeSecondary();
 
 	std::vector<std::string> Split(std::string stringToSplit, char delimeter);
 	std::vector<std::wstring> WSplit(std::wstring stringToSplit, wchar_t delimeter);
