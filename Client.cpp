@@ -410,20 +410,20 @@ void Client::ReceiveCommand(int command) {
 
 			if (InitializePlayer()) {
 
-			std::cout << "Player initialization success!" << std::endl;
+			  std::cout << "Player initialization success!" << std::endl;
 
-			BYTE* streamBytes = new BYTE[sizeof(streamIn) - 1];
-			std::memcpy(streamBytes, streamIn, sizeof(streamIn) - 1);
-			bool result = PlayWaveFile(streamBytes);
+			  BYTE* streamBytes = new BYTE[sizeof(streamIn) - 1];
+			  std::memcpy(streamBytes, streamIn, sizeof(streamIn) - 1);
+			  bool result = PlayWaveFile(streamBytes);
 
-				if (result == true) {
-					std::cout << "Playing song... " << std::endl;
-				}
-				else {
-
-					std::cout << "Could not play song." << std::endl;
-					break;
-				}
+			  if (result == true) {
+				  std::cout << "Playing song... " << std::endl;
+			  }
+			  else {
+				  
+				  std::cout << "Could not play song." << std::endl;
+				  break;
+			  }
 			}
 			else {
 
@@ -583,6 +583,7 @@ bool Client::InitializePlayer() {
 	result = DirectSoundCreate8(NULL, &directSound, NULL);
 	if (FAILED(result))
 	{
+		std::cout << "One " << result << std::endl;
 		return false;
 	}
 
@@ -592,13 +593,14 @@ bool Client::InitializePlayer() {
 	result = directSound->SetCooperativeLevel(GetDesktopWindow(), DSSCL_PRIORITY);
 	if (FAILED(result))
 	{
+	  std::cout << "Two " << result << std::endl;
 		return false;
 	}
 
 	// Setup the primary buffer description.
 	bufferDesc.dwSize = sizeof(DSBUFFERDESC);
 	bufferDesc.dwFlags = DSBCAPS_PRIMARYBUFFER | DSBCAPS_CTRLVOLUME;
-	bufferDesc.dwBufferBytes = dataSize;
+	bufferDesc.dwBufferBytes = 0;
 	bufferDesc.dwReserved = 0;
 	bufferDesc.lpwfxFormat = NULL;
 	bufferDesc.guid3DAlgorithm = GUID_NULL;
@@ -607,6 +609,7 @@ bool Client::InitializePlayer() {
 	result = directSound->CreateSoundBuffer(&bufferDesc, &primaryBuffer, NULL);
 	if (FAILED(result))
 	{
+	  std::cout << "Three " << result << std::endl;
 		return false;
 	}
 
@@ -629,6 +632,7 @@ bool Client::InitializePlayer() {
 	result = primaryBuffer->SetFormat(&waveFormat);
 	if (FAILED(result))
 	{
+	  std::cout << "Four " << result << std::endl;
 		return false;
 	}
 	return true;
@@ -660,6 +664,7 @@ bool Client::InitializePlayer() {
 	result = directSound->CreateSoundBuffer(&bufferDesc, &tempBuffer, NULL);
 	if (FAILED(result))
 	{
+	  std::cout << "Five " << result << std::endl;
 		return false;
 	}
 
@@ -667,6 +672,7 @@ bool Client::InitializePlayer() {
 	result = tempBuffer->QueryInterface(IID_IDirectSoundBuffer8, (void**)&secondaryBuffer);
 	if (FAILED(result))
 	{
+	  std::cout << "Six " << result << std::endl;
 		return false;
 	}
 
@@ -700,6 +706,7 @@ bool Client::PlayWaveFile(BYTE* recvbuffer)
 	//result = secondaryBuffer->SetCurrentPosition(0);
 	if (FAILED(result))
 	{
+	  std::cout << "Could not SetCurrentPosition " << result << std::endl;
 		return false;
 	}
 
