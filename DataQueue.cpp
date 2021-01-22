@@ -1,151 +1,151 @@
 #include <windows.h>
 #include "DataQueue.h"
 
-CRITICAL_SECTION*	g_pcsQueue = NULL;
+CRITICAL_SECTION* g_pcsQueue = NULL;
 
 VOID InitCS()
 {
-	if(g_pcsQueue != NULL)
-	{
-		DeleteCriticalSection(g_pcsQueue);
-		delete g_pcsQueue;
-		g_pcsQueue = NULL;
-	}
-	g_pcsQueue = new CRITICAL_SECTION;
-	InitializeCriticalSection(g_pcsQueue);
+  if (g_pcsQueue != NULL)
+  {
+	DeleteCriticalSection(g_pcsQueue);
+	delete g_pcsQueue;
+	g_pcsQueue = NULL;
+  }
+  g_pcsQueue = new CRITICAL_SECTION;
+  InitializeCriticalSection(g_pcsQueue);
 }
 
 VOID EnterCS()
 {
-	if(g_pcsQueue != NULL)
-		EnterCriticalSection(g_pcsQueue);
+  if (g_pcsQueue != NULL)
+	EnterCriticalSection(g_pcsQueue);
 }
 
 VOID LeaveCS()
 {
-	if(g_pcsQueue != NULL)
-		LeaveCriticalSection(g_pcsQueue);
+  if (g_pcsQueue != NULL)
+	LeaveCriticalSection(g_pcsQueue);
 }
 
 VOID DeleteCS()
 {
-	if(g_pcsQueue != NULL)
-	{
-		DeleteCriticalSection(g_pcsQueue);
-		delete g_pcsQueue;
-		g_pcsQueue = NULL;
-	}
+  if (g_pcsQueue != NULL)
+  {
+	DeleteCriticalSection(g_pcsQueue);
+	delete g_pcsQueue;
+	g_pcsQueue = NULL;
+  }
 }
 
 Data::Data(char* pData, int count)
 {
-	m_pData = new char[count];
-	memcpy(m_pData, pData, count);
-	m_iSize = count;
-	m_pNext = NULL;
+  m_pData = new char[count];
+  memcpy(m_pData, pData, count);
+  m_iSize = count;
+  m_pNext = NULL;
 }
 
 Data::~Data()
 {
-	delete [] m_pData;
+  delete[] m_pData;
 }
 
 void Data::Copy(char* pData, int& count)
 {
-	count = m_iSize;
-	memcpy(pData, m_pData, count);
+  count = m_iSize;
+  memcpy(pData, m_pData, count);
 }
 
 DataQueue::DataQueue()
 {
-	InitCS();
-	
-	m_pRoot = NULL;
-	m_pLastNext = NULL;
-	m_iCount = 0;
+  InitCS();
+
+  m_pRoot = NULL;
+  m_pLastNext = NULL;
+  m_iCount = 0;
 }
 
 DataQueue::~DataQueue()
 {
-	Clear();
-	DeleteCS();
+  Clear();
+  DeleteCS();
 }
-		
+
 void DataQueue::AddQueue(char* data, int count)
 {
-	EnterCS();
+  EnterCS();
 
-	Data* pData = new Data(data, count);
-	if(m_pLastNext == NULL)
-	{
-		m_pRoot = pData;
-		m_pLastNext = pData;
-	}
-	else
-	{
-		m_pLastNext->m_pNext = pData;
-		m_pLastNext = m_pLastNext->m_pNext;
-	}
-	m_iCount++;
+  Data* pData = new Data(data, count);
+  if (m_pLastNext == NULL)
+  {
+	m_pRoot = pData;
+	m_pLastNext = pData;
+  }
+  else
+  {
+	m_pLastNext->m_pNext = pData;
+	m_pLastNext = m_pLastNext->m_pNext;
+  }
+  m_iCount++;
 
-	LeaveCS();
+  LeaveCS();
 }
 
 bool DataQueue::DelQueue(char* data, int& count)
 {
-	bool re = false;
-	count = 0;
+  bool re = false;
+  count = 0;
 
-	EnterCS();
+  EnterCS();
 
-	if(m_pRoot != NULL)
-	{
-		Data* pData = m_pRoot;
-		m_pRoot = m_pRoot->m_pNext;
+  if (m_pRoot != NULL)
+  {
+	Data* pData = m_pRoot;
+	m_pRoot = m_pRoot->m_pNext;
 
-		if(m_pRoot == NULL) m_pLastNext = NULL;
-		m_iCount--;
+	if (m_pRoot == NULL) m_pLastNext = NULL;
+	m_iCount--;
 
-		pData->Copy(data, count);
-		delete pData;
-		re = true;
-	}
+	pData->Copy(data, count);
+	delete pData;
+	re = true;
+  }
 
-	LeaveCS();
+  LeaveCS();
 
-	return re;
+  return re;
 }
 
 bool DataQueue::IsExistFree()
 {
-	bool re = false;
+  bool re = false;
 
-	EnterCS();
-	
-	if(m_iCount < MAX_DATAQUEUE) re = true;
+  EnterCS();
 
-	LeaveCS();
+  if (m_iCount < MAX_DATAQUEUE) re = true;
 
-	return re;
+  LeaveCS();
+
+  return re;
 }
 
 
 void DataQueue::Clear()
 {
-	EnterCS();
-	
-	while(m_pRoot != NULL)
-	{
-		Data* pData = m_pRoot;
-		m_pRoot = m_pRoot->m_pNext;
+  EnterCS();
 
-		if(m_pRoot == NULL) m_pLastNext = NULL;
-		m_iCount--;
+  while (m_pRoot != NULL)
+  {
+	Data* pData = m_pRoot;
+	m_pRoot = m_pRoot->m_pNext;
 
-		delete pData;
-	}
+	if (m_pRoot == NULL) m_pLastNext = NULL;
+	m_iCount--;
 
-	LeaveCS();
+	delete pData;
+  }
+
+  LeaveCS();
 }
 
 
