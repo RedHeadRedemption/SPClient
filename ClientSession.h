@@ -1,22 +1,25 @@
 #pragma once
 
-#include "Audio.h"
+#include "AudioPlayer.h"
 
-struct PacketInfo
+enum requestType { Status, ListInfo, SongList, Song , SongIndex };
+enum connectionType { isAlive = 1, isDeleted = 0, Exit = -1 };
+
+struct DataHolder
 {
   int starBites;		// 0x12345678 
-  int type;			// 0-status_info, 1-list_info, 2-list_block, 3-file_info, 4-file_block
-  int size;
-  int offset;
+  requestType requestCommand;
+  int dataSize;
+  int index;
   int count;
-  int serialnumber;
+  int dataAmountSent;
   int stopBits;		//0x87654321 
 };
 
-struct ListInfo
+struct DataOnList
 {
-  int offset;
-  int size;
+  int listIndex;
+  int listSize;
 };
 
 class ClientSession
@@ -25,35 +28,33 @@ public:
   ClientSession(SOCKET clientSocket);
   ~ClientSession(void);
 
-  int _alive;
-  void SendProc();
-  void RecvProc();
-  void KeyProc();
-  void InputFromUser();
+  connectionType connectionStatus;
+  void sendingDataHandler();
+  void receivingDataHandler();
+  void uiHandler();
 
 private:
   HANDLE _mutex;
   SOCKET _clientSocket;
-  char _recvbuf[BLOCK_SIZE];
-  char _recvData[BLOCK_SIZE];
-  int _recvOffset;
-  int _recvSize;
-  char _sendbuf[BLOCK_SIZE];
-  PacketInfo _request;
-  char** _musicNames;
-  int _musicIndex;
-  int _musicCount;
-  int _musicOffset;
-  char _fileBlock[BLOCK_SIZE];
-  int _blockSize;
-  int _fileSize;
-  int _fileOffset;
-  int _keyStatus; // 0:None, 1:MainMenu, 2:PlayMenu
+  char _receiveBuffer[1024];
+  char _sendingBuffer[1024];
+  char _receivedData[1024];
+  int _receivedIndex;
+  int _receivedDataSize;
+  DataHolder _request;
+  char** _songListNames;
+  int _songListIndex;
+  int _songListSize;
+  int _songNumber;
+  char _songData[1024];
+  int _dataSize;
+  int _songSize;
+  int _songIndex;
+  int _menuState; // 0:None, 1:MainMenu, 2:PlayMenu
   bool _sendStop;
-  Audio _audio;
+  AudioPlayer _audio;
 
-  void SendData();
-  void SetSendBuf(int type, int serialnameber = -1);
-  void ParseData();
+  void _setSendingBuffer(requestType type, int serialnameber = -1);
+  void _parseData();
 };
 

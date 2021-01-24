@@ -4,49 +4,47 @@
 #include <stdio.h>
 #include "ClientSession.h"
 #include <mmreg.h>
-#include "DataQueue.h"
 
-DataQueue _dataQueue;
 
-void gSendProc(void* param)
+void instantiateDataSender(void* param)
 {
   ClientSession* session = (ClientSession*)param;
-  session->SendProc();
+  session->sendingDataHandler();
 }
 
-void gRecvProc(void* param)
+void instantiateDataReceiver(void* param)
 {
   ClientSession* session = (ClientSession*)param;
-  session->RecvProc();
+  session->receivingDataHandler();
 }
 
-void gKeyProc(void* param)
+void intantiateUi(void* param)
 {
   ClientSession* session = (ClientSession*)param;
-  session->KeyProc();
+  session->uiHandler();
 }
 
 ClientSession::ClientSession(SOCKET clientSocket)
 {
-  _alive = 1; // 1:alive, 0:delete, -1:exit
+  connectionStatus = isAlive;
   _clientSocket = clientSocket;
-  _musicNames = NULL;
-  _musicIndex = 0;
-  _musicCount = 0;
-  _musicOffset = 0;
-  _keyStatus = 1; // MainMenu
-  _recvOffset = 0;
-  _recvSize = 0;
-  _fileSize = 0;
-  _fileOffset = 0;
+  _songListNames = NULL;
+  _songListIndex = 0;
+  _songListSize = 0;
+  _songNumber = 0;
+  _menuState = 1; // MainMenu
+  _receivedIndex = 0;
+  _receivedDataSize = 0;
+  _songSize = 0;
+  _songIndex = 0;
   _sendStop = false;
 
   _request.starBites = 0x12345678;
-  _request.type = 0;
-  _request.size = sizeof(PacketInfo);
-  _request.offset = 0;
+  _request.requestCommand = Status;
+  _request.dataSize = sizeof(DataHolder);
+  _request.index = 0;
   _request.count = 0;
-  _request.serialnumber = 0;
+  _request.dataAmountSent = 0;
   _request.stopBits = 0x87654321;
 
   // create mutex to synthro
@@ -54,14 +52,14 @@ ClientSession::ClientSession(SOCKET clientSocket)
   if (_mutex == NULL)
   {
 	printf("CreateMutex error: %d\n", GetLastError());
-	_alive = 0;
+	connectionStatus = isDeleted;
 	return;
   }
 
   // create threads for keyboard, sending and receiving.
-  CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)gSendProc, this, 0, NULL);
-  CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)gRecvProc, this, 0, NULL);
-  CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)gKeyProc, this, 0, NULL);
+  CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)instantiateDataSender, this, 0, NULL);
+  CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)instantiateDataReceiver, this, 0, NULL);
+  CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)intantiateUi, this, 0, NULL);
 }
 
 ClientSession::~ClientSession(void)
@@ -70,22 +68,22 @@ ClientSession::~ClientSession(void)
   {
 	closesocket(_clientSocket);
   }
-  if (_musicNames != NULL)
+  if (_songListNames != NULL)
   {
-	for (int i = 0; i < _musicCount; i++)
+	for (int i = 0; i < _songListSize; i++)
 	{
-	  if (_musicNames[i] != NULL) delete[] _musicNames[i];
+	  if (_songListNames[i] != NULL) delete[] _songListNames[i];
 	}
   }
 }
 
-void ClientSession::KeyProc()
+void ClientSession::uiHandler()
 {
   char cmd[32];
   while (true)
   {
-	if (_keyStatus == 0) Sleep(1000); // None
-	else if (_keyStatus == 1) // MainMenu
+	if (_menuState == 0) Sleep(1000); // None
+	else if (_menuState == 1) // MainMenu
 	{
 	  printf("\n[L] get music list from server\n");
 	  printf("[V] view music list\n");
@@ -96,45 +94,45 @@ void ClientSession::KeyProc()
 
 	  if (cmd[0] == 'l' || cmd[0] == 'L')
 	  {
-		SetSendBuf(1); // ListInfo
-		_keyStatus = 0;
+		_setSendingBuffer(ListInfo); // ListInfo
+		_menuState = 0;
 		printf("\nDownloading the music list from server...\n\n");
 	  }
 	  else if (cmd[0] == 'v' || cmd[0] == 'V')
 	  {
-		if (_musicCount == 0)
+		if (_songListSize == 0)
 		{
-		  SetSendBuf(1); // ListInfo
-		  _keyStatus = 0;
+		  _setSendingBuffer(ListInfo); // ListInfo
+		  _menuState = 0;
 		  printf("\nDownloading the music list from server...\n\n");
 		}
 		else
 		{
 		  printf("\n");
-		  for (int i = 0; i < _musicCount; i++)
+		  for (int i = 0; i < _songListSize; i++)
 		  {
-			printf("[%d] %s\n", i + 1, _musicNames[i]);
+			printf("[%d] %s\n", i + 1, _songListNames[i]);
 		  }
 		}
 	  }
 	  else if (cmd[0] == 'q' || cmd[0] == 'Q')
 	  {
-		_alive = -1;
+		connectionStatus = Exit;
 		break;
 	  }
 	  else
 	  {
 		int number = atoi(cmd);
-		if (number > 0 && number <= _musicCount)
+		if (number > 0 && number <= _songListSize)
 		{
-		  _musicIndex = number - 1;
-		  SetSendBuf(3); // FileInfo
-		  _keyStatus = 0;
+		  _songListIndex = number - 1;
+		  _setSendingBuffer(Song); // FileInfo
+		  _menuState = 0;
 		  printf("\nInitializing...\n\n");
 		}
 	  }
 	}
-	else if (_keyStatus == 2) // PlayMenu
+	else if (_menuState == 2) // PlayMenu
 	{
 	  printf("\n[P] play\n");
 	  printf("[S] stop\n");
@@ -148,8 +146,8 @@ void ClientSession::KeyProc()
 		{
 		  if (!_audio.IsAvailable())
 		  {
-			SetSendBuf(3); // FileInfo
-			_keyStatus = 0;
+			_setSendingBuffer(Song); // FileInfo
+			_menuState = 0;
 			while (!_audio.IsAvailable()) Sleep(500);
 		  }
 		  _audio.Play();
@@ -157,8 +155,8 @@ void ClientSession::KeyProc()
 		else if (cmd[0] == 's' || cmd[0] == 'S')
 		{
 		  _audio.Stop();
-		  SetSendBuf(3); // FileInfo
-		  _keyStatus = 0;
+		  _setSendingBuffer(Song); // FileInfo
+		  _menuState = 0;
 		  break;
 		}
 		else if (cmd[0] == 'a' || cmd[0] == 'A')
@@ -168,7 +166,7 @@ void ClientSession::KeyProc()
 		else if (cmd[0] == 'x' || cmd[0] == 'X')
 		{
 		  _audio.Stop();
-		  _keyStatus = 1;
+		  _menuState = 1;
 		  break;
 		}
 	  }
@@ -176,204 +174,200 @@ void ClientSession::KeyProc()
   }
 }
 
-void ClientSession::SendData()
+
+void ClientSession::_setSendingBuffer(requestType type, int serialnameber)
 {
+  _request.requestCommand = type;
+  if (serialnameber != -1) _request.dataAmountSent = serialnameber;
+
+  if (_request.requestCommand == SongList) _request.index = _songNumber;
+  else if (_request.requestCommand == Song) _request.index = _songListIndex;
+  else if (_request.requestCommand == SongIndex) _request.index = _songIndex;
+
   DWORD dwWaitResult = WaitForSingleObject(_mutex, INFINITE);  // no time-out interval         
 
-  int len = send(_clientSocket, _sendbuf, sizeof(PacketInfo), 0);
-  if (len == SOCKET_ERROR) _alive = 0;
+  memcpy(_sendingBuffer, &_request, sizeof(DataHolder));
 
   ReleaseMutex(_mutex);
 }
 
-void ClientSession::SetSendBuf(int type, int serialnameber)
+void ClientSession::sendingDataHandler()
 {
-  _request.type = type;
-  if (serialnameber != -1) _request.serialnumber = serialnameber;
-
-  if (_request.type == 2) _request.offset = _musicOffset;
-  else if (_request.type == 3) _request.offset = _musicIndex;
-  else if (_request.type == 4) _request.offset = _fileOffset;
-
-  DWORD dwWaitResult = WaitForSingleObject(_mutex, INFINITE);  // no time-out interval         
-
-  memcpy(_sendbuf, &_request, sizeof(PacketInfo));
-
-  ReleaseMutex(_mutex);
-}
-
-void ClientSession::SendProc()
-{
-  while (_alive == 1)
+  while (connectionStatus == isAlive)
   {
-	if (_request.type == 0)
+	if (_request.requestCommand == Status)
 	{
 	  Sleep(500); // status
 	}
 
 	Sleep(2);
 	if (_sendStop) continue;
-	if (_request.type == 4 && !_dataQueue.IsExistFree()) continue;
+	if (_request.requestCommand == SongIndex && !_audio.wrapperIsExist()) continue;
 
-	SendData();
+	DWORD dwWaitResult = WaitForSingleObject(_mutex, INFINITE);  // no time-out interval         
+
+	int len = send(_clientSocket, _sendingBuffer, sizeof(DataHolder), 0);
+	if (len == SOCKET_ERROR) connectionStatus = isDeleted;
+
+	ReleaseMutex(_mutex);
   }
 }
 
-void ClientSession::RecvProc()
+void ClientSession::receivingDataHandler()
 {
-  while (_alive == 1)
+  while (connectionStatus == isAlive)
   {
 	try
 	{
 	  _sendStop = false;
-	  int len = recv(_clientSocket, _recvbuf, BLOCK_SIZE, 0);
+	  int len = recv(_clientSocket, _receiveBuffer, 1024, 0);
 	  _sendStop = true;
 
 	  if (len <= 0)
 	  {
 		printf("\nrecv failed with error: %d\n", WSAGetLastError());
-		_alive = 0;
+		connectionStatus = isDeleted;
 		break;
 	  }
 
 	  int offset = 0;
-	  if (_recvSize == 0)
+	  if (_receivedDataSize == 0)
 	  {
-		if (len < sizeof(PacketInfo)) continue;
+		if (len < sizeof(DataHolder)) continue;
 
-		PacketInfo* response = (PacketInfo*)_recvbuf;
+		DataHolder* response = (DataHolder*)_receiveBuffer;
 		if (response->starBites != 0x12345678) continue;
 		if (response->stopBits != 0x87654321) continue;
 
-		_recvSize = response->size;
+		_receivedDataSize = response->dataSize;
 
-		memcpy(_recvData, _recvbuf, sizeof(PacketInfo));
-		_recvOffset = sizeof(PacketInfo);
-		offset = sizeof(PacketInfo);
+		memcpy(_receivedData, _receiveBuffer, sizeof(DataHolder));
+		_receivedIndex = sizeof(DataHolder);
+		offset = sizeof(DataHolder);
 	  }
 
-	  int remain = min(len - offset, _recvSize - _recvOffset);
+	  int remain = min(len - offset, _receivedDataSize - _receivedIndex);
 	  if (remain > 0)
 	  {
-		memcpy(_recvData + _recvOffset, _recvbuf + offset, remain);
-		_recvOffset += remain;
+		memcpy(_receivedData + _receivedIndex, _receiveBuffer + offset, remain);
+		_receivedIndex += remain;
 		offset += remain;
 	  }
 
-	  if (_recvOffset >= _recvSize)
+	  if (_receivedIndex >= _receivedDataSize)
 	  {
-		ParseData();
-		_recvOffset = 0;
-		_recvSize = 0;
+		_parseData();
+		_receivedIndex = 0;
+		_receivedDataSize = 0;
 	  }
 	}
 	catch (...)
 	{
 	  printf("\nrecv failed with error: %d\n", WSAGetLastError());
-	  _alive = 0;
+	  connectionStatus = isDeleted;
 	  break;
 	}
   }
 }
 
-void ClientSession::ParseData()
+void ClientSession::_parseData()
 {
-  PacketInfo* response = (PacketInfo*)_recvData;
-  if (response->type == 1) // ListInfo
+  DataHolder* response = (DataHolder*)_receivedData;
+  if (response->requestCommand == ListInfo) // ListInfo
   {
-	if (_musicNames != NULL)
+	if (_songListNames != NULL)
 	{
-	  for (int i = 0; i < _musicCount; i++)
+	  for (int i = 0; i < _songListSize; i++)
 	  {
-		if (_musicNames[i] != NULL) delete[] _musicNames[i];
+		if (_songListNames[i] != NULL) delete[] _songListNames[i];
 	  }
 	}
-	_musicCount = response->count;
-	_musicNames = (char**)(new char* [_musicCount]);
-	for (int i = 0; i < _musicCount; i++) _musicNames[i] = NULL;
-	_musicOffset = 0;
+	_songListSize = response->count;
+	_songListNames = (char**)(new char* [_songListSize]);
+	for (int i = 0; i < _songListSize; i++) _songListNames[i] = NULL;
+	_songNumber = 0;
 
-	SetSendBuf(2, response->serialnumber); // ListBlock
+	_setSendingBuffer(SongList, response->dataAmountSent); // ListBlock
   }
-  else if (response->type == 2) // ListBlock
+  else if (response->requestCommand == SongList) // ListBlock
   {
-	if (_musicNames == NULL)
+	if (_songListNames == NULL)
 	{
-	  SetSendBuf(1, response->serialnumber); // ListInfo
+	  _setSendingBuffer(ListInfo, response->dataAmountSent); // ListInfo
 	  return;
 	}
 
-	if (_musicOffset != _request.offset)
+	if (_songNumber != _request.index)
 	{
-	  SetSendBuf(2, response->serialnumber); // ListBlock
+	  _setSendingBuffer(SongList, response->dataAmountSent); // ListBlock
 	  return;
 	}
 
-	int offset = sizeof(PacketInfo);
-	while (offset < _recvSize && _musicOffset < _musicCount)
+	int offset = sizeof(DataHolder);
+	while (offset < _receivedDataSize && _songNumber < _songListSize)
 	{
-	  ListInfo* listInfo = (ListInfo*)(_recvData + offset);
-	  if (listInfo->offset != _musicOffset) break;
-	  offset += sizeof(ListInfo);
+	  DataOnList* listInfo = (DataOnList*)(_receivedData + offset);
+	  if (listInfo->listIndex != _songNumber) break;
+	  offset += sizeof(DataOnList);
 
-	  if (_recvSize - offset < listInfo->size) break;
+	  if (_receivedDataSize - offset < listInfo->listSize) break;
 
-	  _musicNames[_musicOffset] = new char[listInfo->size];
-	  memcpy(_musicNames[_musicOffset], _recvData + offset, listInfo->size);
-	  printf("[%d] %s\n", _musicOffset + 1, _musicNames[_musicOffset]);
-	  _musicOffset++;
-	  offset += listInfo->size;
+	  _songListNames[_songNumber] = new char[listInfo->listSize];
+	  memcpy(_songListNames[_songNumber], _receivedData + offset, listInfo->listSize);
+	  printf("[%d] %s\n", _songNumber + 1, _songListNames[_songNumber]);
+	  _songNumber++;
+	  offset += listInfo->listSize;
 	}
 
-	if (_musicOffset < _musicCount)
+	if (_songNumber < _songListSize)
 	{
-	  SetSendBuf(2, response->serialnumber); // ListBlock
+	  _setSendingBuffer(SongList, response->dataAmountSent); // ListBlock
 	  return;
 	}
 
-	_keyStatus = 1;
-	SetSendBuf(0, response->serialnumber); // Satatus
+	_menuState = 1;
+	_setSendingBuffer(Status, response->dataAmountSent); // Satatus
   }
-  else if (response->type == 3) // FileInfo
+  else if (response->requestCommand == Song) // FileInfo
   {
-	_fileSize = response->count;
-	if (_fileSize == -1)
+	_songSize = response->count;
+	if (_songSize == -1)
 	{
-	  printf("[%s couldn't be read\n", _musicNames[_musicIndex]);
-	  _keyStatus = 1;
-	  SetSendBuf(0, response->serialnumber); // Satatus
+	  printf("[%s couldn't be read\n", _songListNames[_songListIndex]);
+	  _menuState = 1;
+	  _setSendingBuffer(Status, response->dataAmountSent); // Status
 	  return;
 	}
-	else if (_fileSize < 1024) printf("\n%s filesize: %d bytes\n", _musicNames[_musicIndex], _fileSize);
-	else printf("\n%s filesize: %d KB\n", _musicNames[_musicIndex], _fileSize / 1024);
+	else if (_songSize < 1024) printf("\n%s filesize: %d bytes\n", _songListNames[_songListIndex], _songSize);
+	else printf("\n%s filesize: %d KB\n", _songListNames[_songListIndex], _songSize / 1024);
 
 	_audio.Start();
-	_fileOffset = 0;
-	_keyStatus = 2;
-	SetSendBuf(4, response->serialnumber); // FileBlock
+	_songIndex = 0;
+	_menuState = 2;
+	_setSendingBuffer(SongIndex, response->dataAmountSent); // FileBlock
   }
-  else if (response->type == 4) // FileBlock
+  else if (response->requestCommand == SongIndex) // FileBlock
   {
-	if (_audio.IsAvailable()) _keyStatus = 2;
+	if (_audio.IsAvailable()) _menuState = 2;
 
-	_blockSize = _recvSize - sizeof(PacketInfo);
-	if (_fileOffset != response->offset)
+	_dataSize = _receivedDataSize - sizeof(DataHolder);
+	if (_songIndex != response->index)
 	{
-	  SetSendBuf(4, response->serialnumber); // FileBlock
+	  _setSendingBuffer(SongIndex, response->dataAmountSent); // FileBlock
 	  return;
 	}
 
-	_dataQueue.AddQueue(_recvData + sizeof(PacketInfo), _blockSize);
-	_fileOffset += _blockSize;
+	_audio.wrapperAddQueue(_receivedData + sizeof(DataHolder), _dataSize);
+	_songIndex += _dataSize;
 
-	if (_fileOffset < _fileSize)
+	if (_songIndex < _songSize)
 	{
-	  SetSendBuf(4, response->serialnumber); // ListBlock
+	  _setSendingBuffer(SongIndex, response->dataAmountSent); // ListBlock
 	  return;
 	}
 
 	_audio.Done();
-	SetSendBuf(0, response->serialnumber); // Satatus
+	_setSendingBuffer(Status, response->dataAmountSent); // Status
   }
 }
 

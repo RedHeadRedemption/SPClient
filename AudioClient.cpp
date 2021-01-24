@@ -89,8 +89,8 @@ int main()
 
 	ClientSession* session = new ClientSession(clientSocket);
 
-	while (session->_alive == 1) Sleep(500);
-	int alive = session->_alive;
+	while (session->connectionStatus == 1) Sleep(500);
+	int alive = session->connectionStatus;
 	delete session;
 	if (alive == -1) break;
   }
