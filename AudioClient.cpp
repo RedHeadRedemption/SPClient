@@ -2,11 +2,15 @@
 #define _CRT_SECURE_NO_WARNINGS
 
 #include <winsock2.h>
+#include <iostream>
+#include <windows.h>
 #include "stdio.h"
 #include "ClientSession.h"
 
 #pragma comment (lib, "ws2_32.lib")
 
+HANDLE hStdin;
+DWORD fdwSaveOldMode;
 char ip[32];
 int port = 5000;
 SOCKET clientSocket = INVALID_SOCKET;
